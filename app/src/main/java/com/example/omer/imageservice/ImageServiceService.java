@@ -16,11 +16,13 @@ import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
+import android.view.inputmethod.InputContentInfo;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -81,7 +83,7 @@ public class ImageServiceService extends Service {
         if (Camera == null) {
             return;
         }
-        File[] pics = Camera.listFiles();
+        final File[] pics = Camera.listFiles();
 
         // progress bar
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
@@ -91,29 +93,41 @@ public class ImageServiceService extends Service {
 
         int count = 0;
         if (pics != null) {
-            try {
-                InetAddress serverAddr = InetAddress.getByName("10.0.2.2");
-                Socket socket = new Socket(serverAddr, 8000);
-                try {
-                    OutputStream outputStream = socket.getOutputStream();
-                    for (File pic : pics) {
-                        Log.e("TCP", "YES!");
-                        FileInputStream fis = new FileInputStream(pic);
-                        Bitmap bm = BitmapFactory.decodeStream(fis);
-                        byte[] imgbyte = getBytesFromBitmap(bm);
-                        outputStream.write(imgbyte);
-                        outputStream.flush();
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        InetAddress serverAddr = InetAddress.getByName("10.0.2.2");
+                        Socket socket = new Socket(serverAddr, 8000);
+                        try {
+                            OutputStream outputStream = socket.getOutputStream();
+                            InputStream inputStream = socket.getInputStream();
+
+                            for (File pic : pics) {
+                                Log.e("TCP", "YES!");
+                                FileInputStream fis = new FileInputStream(pic);
+                                Bitmap bm = BitmapFactory.decodeStream(fis);
+                                byte[] imgbyte = getBytesFromBitmap(bm);
+                                byte[] b = new byte[1];
+                                outputStream.write(pic.getName().getBytes());
+                                if (inputStream.read(b,0,1) == 1) {
+                                    outputStream.write(imgbyte);
+                                }
+                                outputStream.flush();
+                            }
+                        } catch (Exception e) {
+                            Log.e("TCP", "S: Error", e);
+                        } finally {
+                            socket.close();
+                        }
+                    } catch (Exception e) {
+                        Log.e("TCP", "C: Error", e);
                     }
-                } catch (Exception e) {
-                    Log.e("TCP", "S: Error", e);
-                } finally {
-                    socket.close();
                 }
-            } catch (Exception e) {
-                Log.e("TCP", "C: Error", e);
-            }
+            }).start();
         }
     }
+
 
     public byte[] getBytesFromBitmap(Bitmap bitmap) {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
